@@ -31,3 +31,6 @@ input[type="file"]::file-selector-button{
 .zone-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.zone-card-actions button{width:100%}
 .form-error{margin:12px 0 0;color:#ff9c9c;background:#321716;border:1px solid #713431;border-radius:9px;padding:10px 12px;font-weight:700}.delete-confirm{margin-top:16px;border:1px solid #70483d;background:#211510;border-radius:12px;padding:14px}
 @media(max-width:760px){.zone-modal{width:calc(100vw - 24px);padding:22px 18px}.zone-form,.zone-cards{grid-template-columns:1fr}.zone-rain{grid-column:auto}}
+
+/* Death analysis readability */
+.panel .echarts-for-react{min-width:0}
