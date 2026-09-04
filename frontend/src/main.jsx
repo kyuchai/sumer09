@@ -26,7 +26,7 @@ function App(){
  return <div className="app">
   <aside><div className="brand"><span className="logo">🌿</span><div><h1>Plantopia</h1><p>Cyber-Botanist Console</p></div></div>
    <Nav tab={tab} setTab={setTab}/><div className="zonebox"><b>場域篩選</b><button className={!zoneFilter?'active':''} onClick={()=>setZoneFilter('')}>🌎 全部場域</button>{zones.map(z=><button className={String(zoneFilter)===String(z.id)?'active':''} key={z.id} onClick={()=>setZoneFilter(z.id)}>🪴 {z.name}</button>)}<button onClick={()=>setZoneManager(true)}>＋ 管理場域</button></div>
-   <button className="seed" onClick={seed}>✨ 初始化示範資料</button><button className="seed" style={{borderColor:'#7b3434',color:'#ffabab',marginTop:8}} onClick={()=>setResetOpen(true)}>🧹 刪除所有資料</button>
+   <button className="seed" onClick={seed}>✨ 建立 Demo 示範資料</button><button className="seed" style={{borderColor:'#7b3434',color:'#ffabab',marginTop:8}} onClick={()=>setResetOpen(true)}>🧹 刪除所有資料</button>
   </aside>
   <main><header><div><h2>{titles[tab]}</h2><span>Final Edition · VS Code / Render Ready</span></div><div className="coin">🪙 {money(dash?.total_net_worth)}</div></header>
    {notice&&<div className="toast">{notice}</div>}
