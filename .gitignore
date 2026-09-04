@@ -1,0 +1,10 @@
+backend/.venv/
+backend/plantopia.db
+backend/test_plantopia.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+frontend/node_modules/
+backend/.env
+frontend/.env
+__pycache__/
+.pytest_cache/
