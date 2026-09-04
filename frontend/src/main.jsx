@@ -16,13 +16,13 @@ const taiwanTime=value=>{
     hour:'2-digit',minute:'2-digit',hour12:false
   }).format(d);
 };
-const cats={fern:'蕨類',herb:'香草',vegetable:'蔬菜',flower:'花卉',other:'其他'};
+const cats={fern:'蕨類',foliage:'觀葉植物',succulent:'多肉植物',herb:'香草',vegetable:'蔬菜',flower:'花卉',other:'其他'};
 function App(){
  const [tab,setTab]=useState('dashboard'),[plants,setPlants]=useState([]),[zones,setZones]=useState([]),[inv,setInv]=useState([]),[dash,setDash]=useState(null),[analytics,setAnalytics]=useState({death_causes:[],finance_monthly:[]}),[native,setNative]=useState({items:[],count:0,total:18,percent:0}),[sellers,setSellers]=useState([]),[emergency,setEmergency]=useState([]),[composts,setComposts]=useState([]),[zoneFilter,setZoneFilter]=useState(''),[notice,setNotice]=useState(''),[selected,setSelected]=useState(null),[zoneManager,setZoneManager]=useState(false),[resetOpen,setResetOpen]=useState(false);
  const toast=t=>{setNotice(t);setTimeout(()=>setNotice(''),2600)};
  const load=async()=>{try{const [z,p,i,d,a,n,s,e,c]=await Promise.all([api('/zones'),api('/plants'+(zoneFilter?`?zone_id=${zoneFilter}`:'')),api('/inventory'),api('/dashboard'),api('/analytics'),api('/native-species'),api('/sellers'),api('/emergency-care'),api('/compost')]);setZones(z);setPlants(p);setInv(i);setDash(d);setAnalytics(a);setNative(n);setSellers(s);setEmergency(e);setComposts(c)}catch(e){toast('載入失敗：'+e.message)}};
  useEffect(()=>{load()},[zoneFilter]);
- const seed=async()=>{await api('/seed',{method:'POST'});toast('已建立示範場域與庫存');load()};
+ const seed=async()=>{try{toast('⏳ 正在建立 Demo 資料…');const r=await api('/seed',{method:'POST'});await load();toast(`✨ Demo 完成：10 株植物、2 個場域、12 個盆器${r.created_plants===0?'（資料已存在）':''}`)}catch(e){toast('Demo 建立失敗：'+e.message)}};
  return <div className="app">
   <aside><div className="brand"><span className="logo">🌿</span><div><h1>Plantopia</h1><p>Cyber-Botanist Console</p></div></div>
    <Nav tab={tab} setTab={setTab}/><div className="zonebox"><b>場域篩選</b><button className={!zoneFilter?'active':''} onClick={()=>setZoneFilter('')}>🌎 全部場域</button>{zones.map(z=><button className={String(zoneFilter)===String(z.id)?'active':''} key={z.id} onClick={()=>setZoneFilter(z.id)}>🪴 {z.name}</button>)}<button onClick={()=>setZoneManager(true)}>＋ 管理場域</button></div>
