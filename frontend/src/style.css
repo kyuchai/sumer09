@@ -34,3 +34,7 @@ input[type="file"]::file-selector-button{
 
 /* Death analysis readability */
 .panel .echarts-for-react{min-width:0}
+
+
+/* Inventory merge + batch watering */
+button:disabled{opacity:.48;cursor:not-allowed}
