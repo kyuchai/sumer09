@@ -51,6 +51,23 @@ def create_zone(payload:ZoneCreate,db:Session=Depends(get_db)):
 @app.get('/zones',response_model=list[ZoneOut])
 def zones(db:Session=Depends(get_db)): return list(db.scalars(select(Zone).order_by(Zone.name)))
 
+@app.put('/zones/{zone_id}',response_model=ZoneOut)
+def update_zone(zone_id:int,payload:ZoneCreate,db:Session=Depends(get_db)):
+    z=db.get(Zone,zone_id)
+    if not z: raise HTTPException(404,'Zone not found')
+    duplicate=db.scalar(select(Zone).where(Zone.name==payload.name,Zone.id!=zone_id))
+    if duplicate: raise HTTPException(409,'Zone already exists')
+    for key,value in payload.model_dump().items(): setattr(z,key,value)
+    db.commit();db.refresh(z);return z
+
+@app.delete('/zones/{zone_id}',status_code=204)
+def delete_zone(zone_id:int,db:Session=Depends(get_db)):
+    z=db.get(Zone,zone_id)
+    if not z: raise HTTPException(404,'Zone not found')
+    used=db.scalar(select(Plant).where(Plant.zone_id==zone_id).limit(1))
+    if used: raise HTTPException(409,'此場域仍有植物使用中，請先移動植物後再刪除')
+    db.delete(z);db.commit()
+
 @app.post('/sellers',response_model=SellerOut,status_code=201)
 def add_seller(payload:SellerCreate,db:Session=Depends(get_db)):
     s=db.scalar(select(Seller).where(Seller.name==payload.name))
