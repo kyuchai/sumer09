@@ -194,6 +194,26 @@ def cwa_forecast(location:str|None):
 
 @app.get('/weather')
 def weather(location:str|None=None):return cwa_forecast(location)
+@app.post('/plants/water-batch')
+def water_batch(payload:dict,db:Session=Depends(get_db)):
+    raw_ids=payload.get('plant_ids',[])
+    if not isinstance(raw_ids,list) or not raw_ids:
+        raise HTTPException(400,'請至少選擇 1 株植物')
+    try:
+        ids=list(dict.fromkeys(int(x) for x in raw_ids))
+    except Exception:
+        raise HTTPException(400,'plant_ids 格式錯誤')
+    if len(ids)>500:
+        raise HTTPException(400,'單次最多可澆水 500 株')
+    ps=list(db.scalars(select(Plant).where(Plant.id.in_(ids),Plant.status=='alive')))
+    if not ps:
+        raise HTTPException(400,'目前沒有可澆水的存活植物')
+    now=datetime.utcnow()
+    for p in ps:
+        p.last_watered_at=now
+    db.commit()
+    return {'ok':True,'watered_count':len(ps),'plant_ids':[p.id for p in ps]}
+
 @app.post('/plants/{plant_id}/water',response_model=PlantOut)
 def water(plant_id:int,db:Session=Depends(get_db)):
     p=db.get(Plant,plant_id)
@@ -265,14 +285,61 @@ def gene_tree(plant_id:int,db:Session=Depends(get_db)):
 
 @app.post('/inventory',response_model=InventoryOut,status_code=201)
 def inventory_add(payload:InventoryCreate,db:Session=Depends(get_db)):
-    item=db.scalar(select(InventoryItem).where(InventoryItem.kind==payload.kind,InventoryItem.name==payload.name))
+    incoming_kind='equipment' if payload.kind in ('fixed','equipment') else payload.kind
+    incoming_name=payload.name.strip()
+    incoming_unit=(payload.unit or 'pcs').strip()
+    if not incoming_name:
+        raise HTTPException(400,'資產名稱不可空白')
+
+    candidates=list(db.scalars(select(InventoryItem).where(InventoryItem.unit==incoming_unit)))
+    item=None
+    for x in candidates:
+        existing_kind='equipment' if x.kind in ('fixed','equipment') else x.kind
+        if existing_kind==incoming_kind and x.name.strip().casefold()==incoming_name.casefold():
+            item=x
+            break
+
     if item:
-        item.quantity+=payload.quantity;item.unit_cost=payload.unit_cost
-        if payload.remaining is not None:item.remaining=(item.remaining or 0)+payload.remaining
-        if payload.capacity is not None:item.capacity=max(item.capacity or 0,payload.capacity)
-    else:item=InventoryItem(**payload.model_dump());db.add(item)
-    cost=payload.quantity*payload.unit_cost
-    if cost:db.add(FinanceEntry(entry_type='inventory',amount=-cost,note=f'補貨 {payload.name}'))
+        item.kind=incoming_kind
+        old_qty=max(0,float(item.quantity or 0))
+        add_qty=max(0,float(payload.quantity or 0))
+        if incoming_kind=='consumable':
+            old_amount=max(0,float(item.remaining if item.remaining is not None else (item.capacity or 0)))
+            add_amount=max(0,float(payload.remaining if payload.remaining is not None else (payload.capacity if payload.capacity is not None else payload.quantity)))
+            basis=old_amount+add_amount
+            if basis>0:
+                item.unit_cost=((old_amount*float(item.unit_cost or 0))+(add_amount*float(payload.unit_cost or 0)))/basis
+            item.quantity=old_qty+add_qty
+            if payload.capacity is not None:
+                item.capacity=float(item.capacity or 0)+float(payload.capacity)
+            elif item.capacity is None:
+                item.capacity=add_amount
+            if payload.remaining is not None:
+                item.remaining=float(item.remaining or 0)+float(payload.remaining)
+            elif item.remaining is None:
+                item.remaining=add_amount
+        else:
+            basis=old_qty+add_qty
+            if basis>0:
+                item.unit_cost=((old_qty*float(item.unit_cost or 0))+(add_qty*float(payload.unit_cost or 0)))/basis
+            item.quantity=basis
+            item.reusable=bool(item.reusable or payload.reusable)
+            item.quality_level=max(int(item.quality_level or 1),int(payload.quality_level or 1))
+    else:
+        data=payload.model_dump()
+        data['kind']=incoming_kind
+        data['name']=incoming_name
+        data['unit']=incoming_unit
+        item=InventoryItem(**data)
+        db.add(item)
+
+    if incoming_kind=='consumable':
+        add_amount=max(0,float(payload.remaining if payload.remaining is not None else (payload.capacity if payload.capacity is not None else payload.quantity)))
+        cost=add_amount*float(payload.unit_cost or 0)
+    else:
+        cost=float(payload.quantity or 0)*float(payload.unit_cost or 0)
+    if cost:
+        db.add(FinanceEntry(entry_type='inventory',amount=-cost,note=f'補貨 {incoming_name}'))
     db.commit();db.refresh(item);return item
 @app.get('/inventory',response_model=list[InventoryOut])
 def inventory(db:Session=Depends(get_db)):return list(db.scalars(select(InventoryItem).order_by(InventoryItem.kind,InventoryItem.name)))
@@ -280,7 +347,7 @@ def inventory(db:Session=Depends(get_db)):return list(db.scalars(select(Inventor
 def repot(plant_id:int,payload:RepotRequest,db:Session=Depends(get_db)):
     if not db.get(Plant,plant_id):raise HTTPException(404,'Plant not found')
     new=db.get(InventoryItem,payload.new_pot_item_id)
-    if not new or new.kind!='equipment' or new.quantity<1:raise HTTPException(400,'新盆器庫存不足')
+    if not new or new.kind not in ('equipment','fixed') or new.quantity<1:raise HTTPException(400,'新盆器庫存不足')
     new.quantity-=1
     if payload.old_pot_item_id:
         old=db.get(InventoryItem,payload.old_pot_item_id)
