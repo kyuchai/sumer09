@@ -38,11 +38,49 @@ def health(): return {'status':'ok','version':'1.0.0','database':'sqlite' if str
 
 @app.post('/seed')
 def seed(db:Session=Depends(get_db)):
-    if not db.scalar(select(Zone).limit(1)):
-        db.add_all([Zone(name='陽台 A',light='明亮散射光',ventilation='良好',rain_shelter=False,cwa_location='臺中市'),Zone(name='室內層架',light='植物燈',ventilation='一般',rain_shelter=True,cwa_location='臺中市')])
-    if not db.scalar(select(InventoryItem).limit(1)):
-        db.add_all([InventoryItem(kind='equipment',name='3 吋盆',quantity=20,unit='pcs',unit_cost=20,reusable=True,quality_level=2),InventoryItem(kind='equipment',name='5 吋盆',quantity=10,unit='pcs',unit_cost=40,reusable=True,quality_level=2),InventoryItem(kind='consumable',name='綜合介質',quantity=1,unit='g',unit_cost=.02,capacity=10000,remaining=10000),InventoryItem(kind='consumable',name='緩釋肥',quantity=1,unit='g',unit_cost=.08,capacity=1000,remaining=1000)])
-    db.commit(); return {'ok':True}
+    # Demo seed is intentionally idempotent: only create each demo record when missing.
+    zone_specs=[
+        dict(name='陽台 A',light='明亮散射光',ventilation='良好',rain_shelter=False,cwa_location='臺中市'),
+        dict(name='室內層架',light='植物燈',ventilation='一般',rain_shelter=True,cwa_location='臺中市'),
+    ]
+    zones={}
+    for spec in zone_specs:
+        z=db.scalar(select(Zone).where(Zone.name==spec['name']))
+        if not z:
+            z=Zone(**spec); db.add(z); db.flush()
+        zones[spec['name']]=z
+
+    # 10 demo plants across two zones. Costs/values vary so finance charts are useful in a demo.
+    plant_specs=[
+        dict(name='二叉鹿角蕨',category='fern',species_code='P03',rarity='common',propagation_method='分株',purchase_cost=450,market_value=650,watering_interval_days=3,drought_tolerance_days=5,zone='陽台 A',seller_name='示範賣家 A'),
+        dict(name='象耳鹿角蕨',category='fern',species_code='P05',rarity='rare',propagation_method='側芽',purchase_cost=900,market_value=1200,watering_interval_days=3,drought_tolerance_days=5,zone='陽台 A',seller_name='示範賣家 A'),
+        dict(name='皇冠鹿角蕨',category='fern',species_code='P04',rarity='rare',propagation_method='側芽',purchase_cost=1200,market_value=1600,watering_interval_days=4,drought_tolerance_days=6,zone='陽台 A',seller_name='示範賣家 B'),
+        dict(name='女王鹿角蕨',category='fern',species_code='P17',rarity='rare',propagation_method='孢子',purchase_cost=1800,market_value=2400,watering_interval_days=4,drought_tolerance_days=6,zone='陽台 A',seller_name='示範賣家 B'),
+        dict(name='爪哇鹿角蕨',category='fern',species_code='P18',rarity='common',propagation_method='分株',purchase_cost=600,market_value=850,watering_interval_days=3,drought_tolerance_days=5,zone='陽台 A',seller_name='示範賣家 A'),
+        dict(name='龜背芋',category='foliage',species_code='',rarity='common',propagation_method='扦插',purchase_cost=350,market_value=500,watering_interval_days=5,drought_tolerance_days=8,zone='室內層架',seller_name='示範賣家 C'),
+        dict(name='蔓綠絨',category='foliage',species_code='',rarity='common',propagation_method='扦插',purchase_cost=300,market_value=450,watering_interval_days=5,drought_tolerance_days=8,zone='室內層架',seller_name='示範賣家 C'),
+        dict(name='白斑龜背芋',category='foliage',species_code='',rarity='rare',propagation_method='扦插',purchase_cost=1500,market_value=2100,watering_interval_days=5,drought_tolerance_days=8,zone='室內層架',seller_name='示範賣家 C'),
+        dict(name='虎尾蘭',category='succulent',species_code='',rarity='common',propagation_method='分株',purchase_cost=250,market_value=350,watering_interval_days=10,drought_tolerance_days=18,zone='室內層架',seller_name='示範賣家 D'),
+        dict(name='十二之卷',category='succulent',species_code='',rarity='common',propagation_method='側芽',purchase_cost=180,market_value=280,watering_interval_days=9,drought_tolerance_days=15,zone='室內層架',seller_name='示範賣家 D'),
+    ]
+    for spec in plant_specs:
+        if db.scalar(select(Plant).where(Plant.name==spec['name'])): continue
+        data=dict(spec); zone_name=data.pop('zone')
+        db.add(Plant(**data,zone_id=zones[zone_name].id))
+
+    # n=10 demo plants => at least n/2 = 5 pots. We seed 12 pots for an obvious usable buffer.
+    inv_specs=[
+        dict(kind='equipment',name='3 吋盆',quantity=6,unit='pcs',unit_cost=20,reusable=True,quality_level=2),
+        dict(kind='equipment',name='5 吋盆',quantity=6,unit='pcs',unit_cost=40,reusable=True,quality_level=2),
+        dict(kind='consumable',name='綜合介質',quantity=1,unit='g',unit_cost=.02,capacity=10000,remaining=10000),
+        dict(kind='consumable',name='緩釋肥',quantity=1,unit='g',unit_cost=.08,capacity=1000,remaining=1000),
+    ]
+    for spec in inv_specs:
+        if not db.scalar(select(InventoryItem).where(InventoryItem.name==spec['name'])):
+            db.add(InventoryItem(**spec))
+
+    db.commit()
+    return {'ok':True,'demo':{'plants':10,'zones':2,'pots':12}}
 
 @app.post('/zones',response_model=ZoneOut,status_code=201)
 def create_zone(payload:ZoneCreate,db:Session=Depends(get_db)):
