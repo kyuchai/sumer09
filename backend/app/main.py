@@ -268,14 +268,14 @@ async def photo_upload(plant_id:int,angle:str=Form(...),note:str=Form(''),file:U
 @app.get('/photo-files/{photo_id}')
 def photo_file(photo_id:int,db:Session=Depends(get_db)):
     x=db.get(PhotoLog,photo_id)
-    if not x:raise HTTPException(404,'Photo not found')
+    if not x: raise HTTPException(404,'Photo not found')
     blob=db.scalar(select(PhotoBlob).where(PhotoBlob.photo_log_id==photo_id))
-    if blob:
-        return Response(content=base64.b64decode(blob.data_base64),media_type=blob.content_type,headers={'Cache-Control':'public, max-age=3600'})
-    local=UPLOAD_DIR/x.filename
-    if local.exists():
-        return Response(content=local.read_bytes(),media_type='image/jpeg',headers={'Cache-Control':'public, max-age=3600'})
-    raise HTTPException(404,'Photo data not found')
+    if not blob: raise HTTPException(404,'Photo data not found in persistent database')
+    try:
+        raw=base64.b64decode(blob.data_base64,validate=True)
+    except Exception:
+        raise HTTPException(500,'Stored photo data is corrupted')
+    return Response(content=raw,media_type=blob.content_type or 'image/jpeg',headers={'Cache-Control':'public, max-age=86400, immutable'})
 
 @app.get('/plants/{plant_id}/photos')
 def photos(plant_id:int,db:Session=Depends(get_db)):
@@ -306,6 +306,27 @@ def compost(payload:CompostCreate,db:Session=Depends(get_db)):
 def compost_list(db:Session=Depends(get_db)):
     xs=list(db.scalars(select(CompostBatch).order_by(CompostBatch.created_at.desc())))
     return [{'id':x.id,'name':x.name,'compost_type':x.compost_type,'cn_ratio':round(x.cn_ratio,1),'moisture_pct':x.moisture_pct,'stage':x.stage,'suggestion':x.suggestion,'created_at':x.created_at} for x in xs]
+
+@app.post('/admin/reset-all')
+def reset_all(payload:dict,db:Session=Depends(get_db)):
+    if payload.get('confirmation')!='DELETE_ALL_PLANTOPIA_DATA':
+        raise HTTPException(400,'Invalid confirmation')
+    try:
+        # Reverse dependency order so foreign keys do not block deletion.
+        for table in reversed(Base.metadata.sorted_tables):
+            db.execute(table.delete())
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    # Local upload copies are only a development convenience; clear them too.
+    try:
+        for f in UPLOAD_DIR.iterdir():
+            if f.is_file(): f.unlink()
+            elif f.is_dir(): shutil.rmtree(f)
+    except Exception:
+        pass
+    return {'ok':True,'message':'All Plantopia data deleted'}
 
 @app.get('/analytics')
 def analytics(db:Session=Depends(get_db)):
